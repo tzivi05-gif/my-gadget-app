@@ -1,0 +1,570 @@
+{% assign section_title = block.settings.section_title %}
+{% assign products_to_show = block.settings.products_to_show %}
+{% assign filter_by_type = block.settings.filter_by_type %}
+{% assign enable_carousel = block.settings.enable_carousel %}
+{% assign show_prices = block.settings.show_prices %}
+{% assign current_product_id = product.id | default: '' %}
+{% assign current_product_type = product.type | default: '' %}
+{% assign current_product_tags = product.tags | join: ',' | default: '' %}
+
+<!-- Load the Gadget API client library asynchronously -->
+<!-- The defer attribute ensures the script loads after HTML parsing but before DOMContentLoaded -->
+<script defer src="https://empowered-gadget-app--development.gadget.app/api/client/web.min.js"></script>
+
+<div class="product-recommendations-section">
+  <div class="product-recommendations-inner">
+    <h2 class="product-recommendations-heading">{{ section_title }}</h2>
+    <div class="product-recommendations-carousel-wrapper">
+      <button class="carousel-nav carousel-nav-prev" id="carousel-prev" aria-label="Previous products">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+      <div id="product-recommendations-content" class="product-recommendations-content">
+        <div class="product-recommendations-loading">Loading recommended products...</div>
+      </div>
+      <button class="carousel-nav carousel-nav-next" id="carousel-next" aria-label="Next products">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .product-recommendations-section {
+    padding: 5rem 0;
+    background-color: rgba(var(--color-background), 1);
+  }
+
+  .product-recommendations-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+  }
+
+  .product-recommendations-heading {
+    font-size: 2.5rem;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 3rem;
+    color: rgba(var(--color-foreground), 1);
+  }
+
+  .product-recommendations-carousel-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .product-recommendations-content {
+    min-height: 400px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .product-recommendations-loading,
+  .product-recommendations-error {
+    text-align: center;
+    padding: 3rem 0;
+    font-size: 1.125rem;
+    color: rgba(var(--color-foreground), 0.55);
+  }
+
+  .product-recommendations-error {
+    color: rgb(185, 28, 28);
+  }
+
+  .product-recommendations-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    transition: transform 0.3s ease;
+  }
+
+  .product-recommendations-grid.carousel-mode {
+    display: flex;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .product-recommendations-grid.carousel-mode::-webkit-scrollbar {
+    display: none;
+  }
+
+  .product-recommendations-grid.carousel-mode .product-card {
+    flex: 0 0 calc(33.333% - 1.333rem);
+    min-width: 280px;
+  }
+
+  .product-card {
+    background: rgba(var(--color-background), 1);
+    border: 1px solid rgba(var(--color-foreground), 0.12);
+    border-radius: 8px;
+    overflow: hidden;
+    transition: box-shadow 0.3s ease, transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+  }
+
+  .product-card:hover {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    transform: translateY(-4px);
+  }
+
+  .product-card-image {
+    width: 100%;
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, rgba(var(--color-foreground), 0.04) 0%, rgba(var(--color-foreground), 0.08) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(var(--color-foreground), 0.25);
+    font-size: 3rem;
+  }
+
+  .product-card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .product-card-content {
+    padding: 1.5rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .product-card-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem 0;
+    color: rgba(var(--color-foreground), 1);
+    line-height: 1.4;
+  }
+
+  .product-card-price {
+    font-size: 1.125rem;
+    font-weight: 500;
+    color: rgba(var(--color-foreground), 0.75);
+    margin: 0 0 1rem 0;
+  }
+
+  .product-card-description {
+    font-size: 0.875rem;
+    color: rgba(var(--color-foreground), 0.55);
+    line-height: 1.6;
+    margin: 0 0 1.5rem 0;
+    flex: 1;
+  }
+
+  .product-card-button {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    background-color: rgba(var(--color-button), 1);
+    color: rgba(var(--color-button-text), 1);
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 500;
+    text-align: center;
+    transition: background-color 0.2s ease;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .product-card-button:hover {
+    background-color: rgba(var(--color-button), 0.85);
+  }
+
+  .carousel-nav {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(var(--color-background), 1);
+    border: 1px solid rgba(var(--color-foreground), 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+    flex-shrink: 0;
+  }
+
+  .carousel-nav:hover:not(:disabled) {
+    background: rgba(var(--color-button), 1);
+    color: rgba(var(--color-button-text), 1);
+    border-color: rgba(var(--color-button), 1);
+  }
+
+  .carousel-nav:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .carousel-nav.hidden {
+    display: none;
+  }
+
+  @media (max-width: 1024px) {
+    .product-recommendations-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .product-recommendations-grid.carousel-mode .product-card {
+      flex: 0 0 calc(50% - 1rem);
+    }
+  }
+
+  @media (max-width: 768px) {
+    .product-recommendations-heading {
+      font-size: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .product-recommendations-grid {
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    .product-recommendations-grid.carousel-mode .product-card {
+      flex: 0 0 calc(100% - 2rem);
+      min-width: 260px;
+    }
+
+    .product-recommendations-inner {
+      padding: 0 1rem;
+    }
+
+    .product-recommendations-section {
+      padding: 3rem 0;
+    }
+
+    .carousel-nav {
+      width: 40px;
+      height: 40px;
+    }
+  }
+</style>
+
+<script>
+// Wait for the HTML document to be fully loaded and parsed
+// This ensures both the DOM is ready and our deferred Gadget script is loaded
+document.addEventListener("DOMContentLoaded", () => {
+  // Initialize the Gadget API client
+  // This creates a new instance of the Gadget client that we can use to interact with our backend
+  // Any part of this extension that needs to interact with Gadget should wait until the client is initialized
+  // The `shopId` property sets up the session to be associated with the shop that is currently loaded. `shop.id` is a Liquid variable that is automatically available in the Shopify theme context.
+  window.api = new EmpoweredGadgetAppClient({
+    browserSession: {
+      shopId: {{ shop.id }}
+    },
+    /*
+     * The endpoint property is required when using Shopify app proxy.
+     * Shopify app proxy allows your app to serve content through the Shopify store's domain (e.g., yourstore.myshopify.com) by proxying requests to your Gadget API.
+     * This endpoint tells the Gadget client to make requests through the Shopify app proxy instead of directly to the Gadget API, ensuring proper authentication and routing.
+     * Remove the line below if you are no longer using Shopify app proxy.
+     */
+    endpoint: "/apps/empowered-gadget-app-api"
+  });
+
+  // Store configuration from Liquid settings
+  const productsToShow = {{ products_to_show }};
+  const filterByType = {{ filter_by_type }};
+  const enableCarousel = {{ enable_carousel }};
+  const showPrices = {{ show_prices }};
+  const currentProductId = "{{ current_product_id }}";
+  const currentProductType = "{{ current_product_type }}";
+  const currentProductTags = "{{ current_product_tags }}";
+
+  // Fisher-Yates shuffle: shuffles an array in place and returns it
+  const shuffleArray = (array) => {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  };
+
+  // Fetch products from Gadget using the API client
+  // skipTypeFilter: when true, omits the productType filter (used for fallback fetching)
+  const fetchProducts = async (limit, skipTypeFilter = false) => {
+    try {
+      const filter = {
+        status: { equals: "active" }
+      };
+
+      if (currentProductId) {
+        filter.id = { notEquals: currentProductId };
+      }
+
+      if (!skipTypeFilter && filterByType && currentProductType) {
+        filter.productType = { equals: currentProductType };
+      }
+
+      const products = await window.api.shopifyProduct.findMany({
+        first: Math.min(limit * 3, 250),
+        filter: filter,
+        select: {
+          id: true,
+          title: true,
+          handle: true,
+          body: true,
+          productType: true,
+          tags: true,
+          variants: {
+            edges: {
+              node: {
+                id: true,
+                price: true
+              }
+            }
+          }
+        }
+      });
+      return products;
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      throw error;
+    }
+  };
+
+  // Truncate text to a maximum length with ellipsis
+  const truncateText = (text, maxLength) => {
+    if (!text) return "";
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength).trim() + "...";
+  };
+
+  // Get the first variant price
+  const getProductPrice = (product) => {
+    if (!product.variants || !product.variants.edges || product.variants.edges.length === 0) {
+      return null;
+    }
+    const firstVariant = product.variants.edges[0].node;
+    return firstVariant.price;
+  };
+
+  // Format price for display
+  const formatPrice = (price) => {
+    if (!price) return "";
+    const numPrice = parseFloat(price);
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(numPrice);
+  };
+
+  // Get the first product image
+  const getProductImage = (product) => {
+    if (product.shopifyData && product.shopifyData.featured_image) {
+      return { source: product.shopifyData.featured_image, altText: product.title };
+    }
+    if (product.shopifyData && product.shopifyData.images && product.shopifyData.images.length > 0) {
+      return { source: product.shopifyData.images[0], altText: product.title };
+    }
+    return null;
+  };
+
+  // Render the product grid
+  const renderProducts = (products) => {
+    const contentEl = document.getElementById("product-recommendations-content");
+    
+    if (!products || products.length === 0) {
+      contentEl.innerHTML = '<div class="product-recommendations-error">No recommended products found.</div>';
+      return;
+    }
+
+    const carouselClass = enableCarousel ? "carousel-mode" : "";
+    const gridHTML = `
+      <ul class="product-recommendations-grid ${carouselClass}">
+        ${products.map(product => {
+          const price = getProductPrice(product);
+          const priceHTML = showPrices && price ? `<div class="product-card-price">${formatPrice(price)}</div>` : "";
+          const image = getProductImage(product);
+          
+          return `
+            <li class="product-card" data-handle="${product.handle}">
+              <div class="product-card-image">
+                ${image ? 
+                  `<img src="${image.source}" alt="${image.altText || product.title}" class="product-card-img">` :
+                  `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>`
+                }
+              </div>
+              <div class="product-card-content">
+                <h3 class="product-card-title">${product.title}</h3>
+                ${priceHTML}
+                <p class="product-card-description">
+                  ${truncateText(product.body || "No description available", 120)}
+                </p>
+                <button class="product-card-button" data-handle="${product.handle}">
+                  View Product
+                </button>
+              </div>
+            </li>
+          `;
+        }).join("")}
+      </ul>
+    `;
+
+    contentEl.innerHTML = gridHTML;
+
+    // Add click handlers to navigate to product pages
+    const productCards = contentEl.querySelectorAll(".product-card");
+    productCards.forEach(card => {
+      const handle = card.dataset.handle;
+      card.addEventListener("click", (e) => {
+        if (e.target.tagName !== "BUTTON") {
+          window.location.href = `/products/${handle}`;
+        }
+      });
+    });
+
+    const buttons = contentEl.querySelectorAll(".product-card-button");
+    buttons.forEach(button => {
+      const handle = button.dataset.handle;
+      button.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.location.href = `/products/${handle}`;
+      });
+    });
+
+    // Setup carousel navigation if enabled
+    if (enableCarousel) {
+      setupCarousel();
+    } else {
+      // Hide navigation buttons if carousel is disabled
+      const prevBtn = document.getElementById("carousel-prev");
+      const nextBtn = document.getElementById("carousel-next");
+      if (prevBtn) prevBtn.classList.add("hidden");
+      if (nextBtn) nextBtn.classList.add("hidden");
+    }
+  };
+
+  // Setup carousel navigation
+  const setupCarousel = () => {
+    const grid = document.querySelector(".product-recommendations-grid");
+    const prevBtn = document.getElementById("carousel-prev");
+    const nextBtn = document.getElementById("carousel-next");
+
+    if (!grid || !prevBtn || !nextBtn) return;
+
+    const scrollAmount = 320; // Approximate card width + gap
+
+    const updateButtonStates = () => {
+      const isAtStart = grid.scrollLeft <= 0;
+      const isAtEnd = grid.scrollLeft >= grid.scrollWidth - grid.clientWidth - 10;
+      
+      prevBtn.disabled = isAtStart;
+      nextBtn.disabled = isAtEnd;
+    };
+
+    prevBtn.addEventListener("click", () => {
+      grid.scrollBy({ left: -scrollAmount, behavior: "smooth" });
+      setTimeout(updateButtonStates, 350);
+    });
+
+    nextBtn.addEventListener("click", () => {
+      grid.scrollBy({ left: scrollAmount, behavior: "smooth" });
+      setTimeout(updateButtonStates, 350);
+    });
+
+    grid.addEventListener("scroll", updateButtonStates);
+    updateButtonStates();
+  };
+
+  // Initialize and load products
+  const initializeProductRecommendations = async () => {
+    const contentEl = document.getElementById("product-recommendations-content");
+
+    try {
+      let products = await fetchProducts(productsToShow);
+      shuffleArray(products);
+      let slicedProducts = products.slice(0, productsToShow);
+
+      // Fallback: if no products found and we were filtering by type, retry without type filter
+      if (slicedProducts.length === 0 && filterByType && currentProductType) {
+        const fallbackProducts = await fetchProducts(productsToShow, true);
+        shuffleArray(fallbackProducts);
+        slicedProducts = fallbackProducts.slice(0, productsToShow);
+      }
+
+      // Fetch image data from Shopify's storefront AJAX API for each product
+      const enrichedProducts = await Promise.all(slicedProducts.map(async (product) => {
+        try {
+          const response = await fetch('/products/' + product.handle + '.js');
+          const shopifyData = await response.json();
+          return { ...product, shopifyData };
+        } catch (e) {
+          return { ...product, shopifyData: null };
+        }
+      }));
+      renderProducts(enrichedProducts);
+    } catch (error) {
+      console.error("Error loading recommended products:", error);
+      contentEl.innerHTML = '<div class="product-recommendations-error">Failed to load recommended products. Please try again later.</div>';
+    }
+  };
+
+  // Start loading products
+  initializeProductRecommendations();
+});
+</script>
+
+{% schema %}
+{
+  "name": "Product Recommendations",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "label": "Section Title",
+      "id": "section_title",
+      "default": "You Might Also Like"
+    },
+    {
+      "type": "range",
+      "label": "Products to Show",
+      "id": "products_to_show",
+      "min": 3,
+      "max": 12,
+      "step": 1,
+      "unit": "qty",
+      "default": 6
+    },
+    {
+      "type": "checkbox",
+      "label": "Filter by Current Product Type",
+      "id": "filter_by_type",
+      "default": true,
+      "info": "When enabled on a product page, only shows products of the same type. Falls back to all products if no match or not on a product page."
+    },
+    {
+      "type": "checkbox",
+      "label": "Enable Carousel",
+      "id": "enable_carousel",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "label": "Show Prices",
+      "id": "show_prices",
+      "default": true
+    }
+  ]
+}
+{% endschema %}
