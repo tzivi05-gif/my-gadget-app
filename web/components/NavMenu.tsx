@@ -10,6 +10,9 @@ export function NavMenu() {
       <Link to="/products">
         Products
       </Link>
+      <Link to="/orders">
+        Orders
+      </Link>
     </AppBridgeNavMenu>
   );
 }
